@@ -20,7 +20,9 @@ impl OverlayMount {
         let upper_dir = TempDir::new_in("tmpdir", "bwrap-upper").unwrap();
         let mount_dir = PathBuf::from("tmpdir/bwrap-mount");
 
-        Command::new("fuse-overlayfs")
+        let cmd = Command::new("fuse-overlayfs")
+            .arg("-o")
+            .arg("allow_root")
             .arg("-o")
             .arg(format!("lowerdir={}", root.to_str().unwrap()))
             .arg("-o")
@@ -28,8 +30,10 @@ impl OverlayMount {
             .arg("-o")
             .arg(format!("workdir={}", work_dir.path().to_str().unwrap()))
             .arg(mount_dir.to_str().unwrap())
-            .output()
+            .spawn()
             .expect("failed to execute process");
+
+        cmd.wait_with_output().expect("failed to wait on child");
 
         Self {
             work_dir,
@@ -73,9 +77,6 @@ struct SandboxOptions {
 
 fn get_bwrap_args(sandbox: &SandboxOptions) -> Vec<&str> {
     let mut args = vec![
-        "--unshare-pid",
-        "--die-with-parent",
-
         "--symlink",
         "usr/bin",
         "/bin",
@@ -88,25 +89,25 @@ fn get_bwrap_args(sandbox: &SandboxOptions) -> Vec<&str> {
         "--symlink",
         "usr/lib64",
         "/lib64",
-
-
         "--bind",
         sandbox.root.mount_dir.to_str().unwrap(),
         "/",
+        "--dir",
+        "/var",
         "--proc",
         "/proc",
         "--dev",
         "/dev",
         "--tmpfs",
         "/tmp",
-        "--uid",
-        "0",
-        "--gid",
-        "0",
-
+        "--unshare-all",
+        "--die-with-parent",
+        // "--uid",
+        // "0",
+        // "--gid",
+        // "0",
         "--exec-label",
         "system_u:system_r:container_t:s0:c1,c2",
-
         "--cap-add",
         "CAP_SYS_ADMIN",
     ];
@@ -138,18 +139,18 @@ fn run_sandbox(sandbox: &SandboxOptions, sandbox_command: Vec<&str>) {
     child.wait_with_output().unwrap();
 }
 
-#[test]
-fn test_bwrap() {
+pub fn test_bwrap() {
     let name = "registry.hub.docker.com/library/fedora:latest";
     let image_dir = pull_image(name, false).unwrap();
-    let mount = OverlayMount::new(image_dir);
+    let mount = OverlayMount::new(PathBuf::from("tmpdir/chroot"));
 
     let sandbox = SandboxOptions {
         root: mount,
-        network: true,
-        env: BTreeMap::from([
-            ("PATH".to_string(), "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin".to_string()),
-        ]),
+        network: false,
+        env: BTreeMap::from([(
+            "PATH".to_string(),
+            "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin".to_string(),
+        )]),
         unset_env: Vec::new(),
         chdir: None,
         devices: Vec::new(),

@@ -2,5 +2,5 @@ mod bwrap;
 mod oci;
 
 fn main() {
-    println!("Hello, world!");
+    bwrap::test_bwrap();
 }

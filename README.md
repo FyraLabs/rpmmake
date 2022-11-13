@@ -16,3 +16,7 @@ rpmmake aims to be a simple and fast tool for building reproducible RPM packages
 Currently, rpmmake is in a very early stage of development and is not ready for production use.
 
 rpmmake only supports building RPMs using `rpmbuild` for now. A pure-rust implementation of rpmbuild is planned.
+
+## Known issues
+
+- rootless overlayfs is broken due to permission issues. however if you mount the overlayfs manually, it works fine.
