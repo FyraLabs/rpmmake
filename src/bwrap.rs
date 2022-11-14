@@ -29,11 +29,26 @@ impl OverlayMount {
             .arg(format!("upperdir={}", upper_dir.path().to_str().unwrap()))
             .arg("-o")
             .arg(format!("workdir={}", work_dir.path().to_str().unwrap()))
+            .arg("-o")
+            .arg("allow_root")
+            .arg("-o")
+            .arg("squash_to_root")
+            .arg("-o")
+            .arg("uidmapping=0:0:1,1:1:65534")
+            .arg("-o")
+            .arg("gidmapping=0:0:1,1:1:65534")
             .arg(mount_dir.to_str().unwrap())
             .spawn()
             .expect("failed to execute process");
 
-        cmd.wait_with_output().expect("failed to wait on child");
+        let s = cmd
+            .wait_with_output()
+            .expect("failed to wait on child")
+            .status;
+
+        if !s.success() {
+            panic!("failed to mount overlay");
+        }
 
         Self {
             work_dir,
@@ -77,6 +92,8 @@ struct SandboxOptions {
 
 fn get_bwrap_args(sandbox: &SandboxOptions) -> Vec<&str> {
     let mut args = vec![
+        "--unshare-user-try",
+        "--unshare-all",
         "--symlink",
         "usr/bin",
         "/bin",
@@ -100,14 +117,15 @@ fn get_bwrap_args(sandbox: &SandboxOptions) -> Vec<&str> {
         "/dev",
         "--tmpfs",
         "/tmp",
-        "--unshare-all",
         "--die-with-parent",
         // "--uid",
         // "0",
         // "--gid",
         // "0",
-        "--exec-label",
-        "system_u:system_r:container_t:s0:c1,c2",
+        // "--exec-label",
+        // "system_u:system_r:container_t:s0:c1,c2",
+        // "--file-label",
+        // "system_u:object_r:container_file_t:s0:c1,c2",
         "--cap-add",
         "CAP_SYS_ADMIN",
     ];
@@ -140,6 +158,10 @@ fn run_sandbox(sandbox: &SandboxOptions, sandbox_command: Vec<&str>) {
 }
 
 pub fn test_bwrap() {
+    // This is set for testing purposes only
+    // TODO: Switch to unshare and make proper use of namespaces
+    // This code is pretty broken rn and needs to be rewritten for mounts and namespaces
+    // If anyone has any ideas on how to do this, please let me know
     let name = "registry.hub.docker.com/library/fedora:latest";
     let image_dir = pull_image(name, false).unwrap();
     let mount = OverlayMount::new(PathBuf::from("tmpdir/chroot"));
@@ -159,5 +181,21 @@ pub fn test_bwrap() {
         bind_ro: BTreeMap::new(),
     };
 
+    // TODO: replicate --map-root-user and --map-current-user for UidMap
+    
+    // let a = unshare::Command::new("/bin/bash")
+    //     .chroot_dir(
+    //         sandbox
+    //             .root
+    //             .mount_dir
+    //             .canonicalize()
+    //             .unwrap()
+    //             .to_str()
+    //             .unwrap(),
+    //     )
+    //     .status();
+    
+    // println!("{:?}", a);
     run_sandbox(&sandbox, vec!["/bin/bash"]);
+
 }
